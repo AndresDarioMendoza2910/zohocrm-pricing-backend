@@ -16,23 +16,56 @@ const catalyst = require('zcatalyst-sdk-node');
 
 const DEFAULT_COUNTRY = 'Panama';   // Country set on rows the widget creates
 
+/* ── Lightweight access hardening (function stays "open" in Catalyst) ──
+   1) CORS is restricted to Zoho widget origins instead of "*".
+   2) A shared key must be sent in the X-Widget-Key header on every request.
+   NOTE: the key is embedded in the widget HTML, so this is obscurity-level
+   protection (stops drive-by calls to the URL), NOT true authentication.
+   Change WIDGET_KEY here AND CS_KEY in BOTH widgets together. */
+const WIDGET_KEY = 'nss-cheatsheet-7Qx3v9Kp2Lr8';
+const ALLOWED_ORIGIN_SUFFIXES = [
+  '.zappsusercontent.com',   // Sigma widget hosting (primary)
+  '.zohostatic.com',
+  '.zoho.com', '.zoho.eu', '.zoho.in', '.zoho.com.au', '.zoho.jp', '.zohocloud.com',
+];
+function originAllowed(origin) {
+  if (!origin) return false;
+  try {
+    const host = new URL(origin).hostname;
+    return ALLOWED_ORIGIN_SUFFIXES.some(function (s) { return host === s.slice(1) || host.endsWith(s); });
+  } catch (e) { return false; }
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Content-Type', 'application/json');
 
-  /* CORS — required because the widget is served from *.zohostatic.com
-     (Sigma extension hosting) but calls this function on the Catalyst
-     domain. Allow GET/POST + the Content-Type header. */
-  res.setHeader('Access-Control-Allow-Origin',  '*');
+  /* CORS — restricted to Zoho widget origins (Sigma hosting). Echo the origin
+     when allowed so the browser accepts the response. X-Widget-Key is allowed
+     as a custom request header (which also triggers a preflight). */
+  const origin = req.headers.origin;
+  res.setHeader('Vary', 'Origin');
+  if (originAllowed(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else if (origin) {
+    console.warn('[cheatsheet-api] Origin not in allowlist:', origin);
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Widget-Key');
 
   const url    = req.url;
   const method = req.method;
 
-  /* Preflight — browsers send OPTIONS before cross-origin POSTs */
+  /* Preflight — browsers send OPTIONS before non-simple cross-origin calls */
   if (method === 'OPTIONS') {
     res.writeHead(204);
     res.end();
+    return;
+  }
+
+  /* Shared-key gate — reject any request without the matching X-Widget-Key */
+  if (req.headers['x-widget-key'] !== WIDGET_KEY) {
+    res.writeHead(401);
+    res.end(JSON.stringify({ success: false, error: 'Unauthorized' }));
     return;
   }
 

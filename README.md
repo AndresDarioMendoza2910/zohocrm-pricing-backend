@@ -8,8 +8,38 @@ Advanced I/O Function** (Node 20) named `cheatsheet-api`, backed by the
 ## Endpoints
 - `GET  /`          → all roles, ordered by `Counter` DESC
 - `POST /upsert`    → match on Role + Seniority; bump `Counter` if found, else
-  insert a new row (`Counter = 1`, `Country = "Panama"`, today's `UpdatedDate`)
-- `POST /increment` → (legacy) bump `Counter` for a given `ROWID`
+  insert a new row (`Counter = 1`, `Country = "Panama"`, today's `UpdatedDate`).
+  Body: `{ Role, Seniority, MinSalary?, MaxSalary? }`. **This is what the widgets
+  call on save** (creates new roles + bumps existing ones).
+- `POST /increment` → (legacy) bump `Counter` for a given `ROWID`. No longer
+  called by the widgets — kept for backward compatibility only.
+
+## Access & security
+The function is **PUBLIC (open)** in Catalyst access control, hardened at the
+app level rather than with Catalyst authentication. (True per-user auth would
+require serving the widget same-origin from Catalyst; we host on Sigma instead —
+see `../MEMORY.md`.)
+
+Two guards, applied to every request before any datastore work:
+1. **Shared-key gate** — requests must send header `X-Widget-Key:
+   <WIDGET_KEY>`; anything else gets `401 Unauthorized`. `WIDGET_KEY` is the
+   constant at the top of `functions/cheatsheet-api/index.js`.
+2. **CORS allowlist** — `Access-Control-Allow-Origin` is echoed only for Zoho
+   origins (`.zappsusercontent.com`, `.zohostatic.com`, `.zoho.*`), not `*`.
+   Rejected origins are logged as `Origin not in allowlist: <origin>`.
+
+> ⚠ **This is obscurity, not authentication.** The key is embedded in the widget
+> HTML (visible via browser DevTools), so it deters drive-by calls to the URL but
+> does not stop a determined caller. CORS only constrains browsers, not direct
+> (e.g. curl) calls — the key gate is the real server-side check.
+>
+> **The key must match in three places:** `WIDGET_KEY` here and `CS_KEY` in both
+> widgets' `widget.html`. Change all three together. Current value:
+> `nss-cheatsheet-7Qx3v9Kp2Lr8`.
+>
+> If the allowlist ever misses the live widget origin, the cheat sheet fails to
+> load — check the function logs for the rejected `Origin` and add it to
+> `ALLOWED_ORIGIN_SUFFIXES`.
 
 ## SalaryCheatSheet schema
 `Role` (text) · `Country` (text) · `Seniority` (text) · `MinSalary` (int) ·
@@ -25,6 +55,13 @@ Bound to the **Pricing-Calculator** Catalyst project via `.catalystrc`
 ```
 catalyst deploy
 ```
+
+> ⚠ **Deploy order to avoid an outage.** Deploying the key gate makes the
+> function reject any widget that isn't sending `X-Widget-Key`. So when rolling
+> out the hardening (or rotating the key): **upload the new widget zips to Sigma
+> FIRST** (they send the key; the still-open function accepts them), **then**
+> `catalyst deploy` here to turn on the gate, then hard-refresh CRM. Doing it in
+> the reverse order 401s the live widgets until the new ones are uploaded.
 
 Function URL (development):
 ```
