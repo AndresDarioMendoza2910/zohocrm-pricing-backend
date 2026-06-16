@@ -1,0 +1,9 @@
+{
+  "functions": {
+    "targets": [
+      "cheatsheet-api"
+    ],
+    "ignore": [],
+    "source": "functions"
+  }
+}

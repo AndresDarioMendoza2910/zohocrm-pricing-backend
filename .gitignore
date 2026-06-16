@@ -1,0 +1,8 @@
+# Dependencies (Catalyst reinstalls on deploy)
+node_modules/
+
+# Catalyst CLI cache / build
+.catalyst/
+
+# Logs
+*.log

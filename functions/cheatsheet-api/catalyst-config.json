@@ -1,0 +1,10 @@
+{
+  "deployment": {
+    "name": "cheatsheet-api",
+    "stack": "node20",
+    "type": "advancedio"
+  },
+  "execution": {
+    "main": "index.js"
+  }
+}
