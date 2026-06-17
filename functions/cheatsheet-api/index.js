@@ -18,9 +18,14 @@ const DEFAULT_COUNTRY = 'Panama';   // Country set on rows the widget creates
 
 /* ── Lightweight access hardening (function stays "open" in Catalyst) ──
    1) CORS is restricted to Zoho widget origins instead of "*".
-   2) A shared key must be sent in the X-Widget-Key header on every request.
+   2) Write routes (/upsert, /increment) require a shared key in the request
+      BODY ({ key: ... }) — NOT a custom header. Writes use Content-Type
+      text/plain so requests stay CORS "simple" and skip the OPTIONS preflight.
+      (Catalyst's gateway answers preflights itself with no CORS headers, which
+      would otherwise block any non-simple cross-origin call.) The GET read
+      route is left open.
    NOTE: the key is embedded in the widget HTML, so this is obscurity-level
-   protection (stops drive-by calls to the URL), NOT true authentication.
+   protection (stops drive-by writes), NOT true authentication.
    Change WIDGET_KEY here AND CS_KEY in BOTH widgets together. */
 const WIDGET_KEY = 'nss-cheatsheet-7Qx3v9Kp2Lr8';
 const ALLOWED_ORIGIN_SUFFIXES = [
@@ -50,22 +55,16 @@ module.exports = async (req, res) => {
     console.warn('[cheatsheet-api] Origin not in allowlist:', origin);
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Widget-Key');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   const url    = req.url;
   const method = req.method;
 
-  /* Preflight — browsers send OPTIONS before non-simple cross-origin calls */
+  /* Preflight — kept for completeness, though "simple" requests skip it.
+     (Catalyst's gateway typically answers OPTIONS before this runs.) */
   if (method === 'OPTIONS') {
     res.writeHead(204);
     res.end();
-    return;
-  }
-
-  /* Shared-key gate — reject any request without the matching X-Widget-Key */
-  if (req.headers['x-widget-key'] !== WIDGET_KEY) {
-    res.writeHead(401);
-    res.end(JSON.stringify({ success: false, error: 'Unauthorized' }));
     return;
   }
 
@@ -89,6 +88,13 @@ module.exports = async (req, res) => {
        "Duplicate" is decided by Role + Seniority together. */
     if (method === 'POST' && url === '/upsert') {
       const body = await readBody(req);
+
+      /* Shared-key gate (in body, not a header → keeps the request preflight-free) */
+      if (body.key !== WIDGET_KEY) {
+        res.writeHead(401);
+        res.end(JSON.stringify({ success: false, error: 'Unauthorized' }));
+        return;
+      }
 
       const role      = String(body.Role || '').trim();
       const seniority = String(body.Seniority || '').trim();
@@ -148,6 +154,14 @@ module.exports = async (req, res) => {
     /* ── POST /increment ── (legacy) bump Counter by 1 by ROWID ── */
     if (method === 'POST' && url === '/increment') {
       const body    = await readBody(req);
+
+      /* Shared-key gate (in body, not a header → keeps the request preflight-free) */
+      if (body.key !== WIDGET_KEY) {
+        res.writeHead(401);
+        res.end(JSON.stringify({ success: false, error: 'Unauthorized' }));
+        return;
+      }
+
       const { rowId } = body;
 
       /* Validate rowId is a non-empty numeric string — reject anything else */

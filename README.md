@@ -20,18 +20,28 @@ app level rather than with Catalyst authentication. (True per-user auth would
 require serving the widget same-origin from Catalyst; we host on Sigma instead —
 see `../MEMORY.md`.)
 
-Two guards, applied to every request before any datastore work:
-1. **Shared-key gate** — requests must send header `X-Widget-Key:
-   <WIDGET_KEY>`; anything else gets `401 Unauthorized`. `WIDGET_KEY` is the
-   constant at the top of `functions/cheatsheet-api/index.js`.
+Two guards:
+1. **Shared-key gate on writes** — `POST /upsert` and `/increment` require a
+   matching `key` field **in the request body** (`{ key: ... }`); mismatch →
+   `401`. `GET /` (read) is left open. `WIDGET_KEY` is the constant at the top of
+   `functions/cheatsheet-api/index.js`.
 2. **CORS allowlist** — `Access-Control-Allow-Origin` is echoed only for Zoho
    origins (`.zappsusercontent.com`, `.zohostatic.com`, `.zoho.*`), not `*`.
    Rejected origins are logged as `Origin not in allowlist: <origin>`.
 
+> ⚠ **Why the key is in the BODY, not a header.** A custom request header (or a
+> JSON `Content-Type`) makes the call a "non-simple" CORS request, forcing an
+> `OPTIONS` **preflight**. Catalyst's gateway answers preflights itself with **no
+> CORS headers**, so the browser blocks the real call ("not reaching the
+> server"). Putting the key in the body and sending writes as
+> `Content-Type: text/plain` keeps the request "simple" → no preflight → it works
+> cross-origin from the Sigma-hosted widget. (`readBody` JSON-parses regardless
+> of content type.)
+>
 > ⚠ **This is obscurity, not authentication.** The key is embedded in the widget
-> HTML (visible via browser DevTools), so it deters drive-by calls to the URL but
-> does not stop a determined caller. CORS only constrains browsers, not direct
-> (e.g. curl) calls — the key gate is the real server-side check.
+> HTML (visible via browser DevTools), so it deters drive-by writes but does not
+> stop a determined caller. CORS only constrains browsers, not direct (e.g. curl)
+> calls — the body-key gate is the real server-side check.
 >
 > **The key must match in three places:** `WIDGET_KEY` here and `CS_KEY` in both
 > widgets' `widget.html`. Change all three together. Current value:
@@ -56,12 +66,12 @@ Bound to the **Pricing-Calculator** Catalyst project via `.catalystrc`
 catalyst deploy
 ```
 
-> ⚠ **Deploy order to avoid an outage.** Deploying the key gate makes the
-> function reject any widget that isn't sending `X-Widget-Key`. So when rolling
-> out the hardening (or rotating the key): **upload the new widget zips to Sigma
-> FIRST** (they send the key; the still-open function accepts them), **then**
-> `catalyst deploy` here to turn on the gate, then hard-refresh CRM. Doing it in
-> the reverse order 401s the live widgets until the new ones are uploaded.
+> ⚠ **Deploy order.** `GET` (read) is open, so the cheat sheet keeps loading
+> across versions. Only `POST` writes are gated (key in body). Roll out together:
+> `catalyst deploy` here **and** upload both new widget zips to Sigma, then
+> hard-refresh CRM. An older widget that sends the key as the `X-Widget-Key`
+> header (the earlier, broken approach) will fail entirely cross-origin — it must
+> be replaced with the body-key build.
 
 Function URL (development):
 ```
