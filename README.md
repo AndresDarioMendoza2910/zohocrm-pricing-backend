@@ -5,6 +5,10 @@ The shared serverless API behind both pricing widgets
 Advanced I/O Function** (Node 20) named `cheatsheet-api`, backed by the
 `SalaryCheatSheet` Data Store table.
 
+This project also hosts a **manual-mode web client** (`client/`) — a standalone,
+Catalyst-served copy of the pricing simulator with no Zoho CRM integration (see
+"Web client" below).
+
 ## Endpoints
 - `GET  /`          → all roles, ordered by `Counter` DESC
 - `POST /upsert`    → match on Role + Seniority; bump `Counter` if found, else
@@ -51,6 +55,28 @@ Two guards:
 > load — check the function logs for the rejected `Origin` and add it to
 > `ALLOWED_ORIGIN_SUFFIXES`.
 
+## Web client (manual mode)
+`client/` is a standalone, Catalyst-hosted build of the pricing simulator. Unlike
+the Sigma widgets it has **no Zoho CRM integration**: there is no embedded record
+to read or write, so it is a read-only calculator. Its only backend dependency is
+`cheatsheet-api`, called with a **relative** `GET /server/cheatsheet-api`
+(same-origin on the Catalyst domain → no CORS, no key). It never writes — there
+is no save button and no `/upsert`/`/increment` call.
+
+It shares the widgets' pricing logic: `MULT = 1.25`,
+`price = r125(salary × 1.25 + max(margin, floor))`, with `TIER_FLOORS` at a
+**flat 1000** for every tier (2026-06-16 business decision). The old "all
+seniority levels" comparison table was removed — the seniority buttons still
+drive the salary defaults and cheat-sheet filtering.
+
+- `client/index.html` — the web client UI
+- `client/client-package.json` — `homepage: index.html`
+- `client/favicon.ico`
+
+`catalyst.json` declares `client.source: "client"`, so `catalyst deploy` ships
+the client and the function together. Catalyst serves the client at the project
+root and the function under `/server/cheatsheet-api`.
+
 ## SalaryCheatSheet schema
 `Role` (text) · `Country` (text) · `Seniority` (text) · `MinSalary` (int) ·
 `MaxSalary` (int) · `Counter` (int) · `UpdatedDate` (date `YYYY-MM-DD`) · `ROWID`.
@@ -78,9 +104,9 @@ Function URL (development):
 https://pricing-calculator-916648406.development.catalystserverless.com/server/cheatsheet-api/
 ```
 
-This project is **function-only** — the old Catalyst-hosted web client was
-retired when the widgets moved to Sigma hosting (see `../legacy/`). If you ever
-need to deploy the function alone explicitly: `catalyst deploy --only functions`.
+`catalyst deploy` ships **both** the `cheatsheet-api` function and the manual-mode
+`client/` web client (see "Web client" above). To deploy one in isolation:
+`catalyst deploy --only functions` or `catalyst deploy --only client`.
 
 > Currently deployed to **development** only. Promoting to production carries
 > code/metadata but NOT Data Store rows — migrate via
