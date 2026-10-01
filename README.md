@@ -7,9 +7,21 @@ Advanced I/O Function** (Node 20) named `cheatsheet-api`, backed by the
 
 This project also hosts a **manual-mode web client** (`client/`) — a standalone,
 Catalyst-served copy of the pricing simulator with no Zoho CRM integration (see
-"Web client" below).
+"Web client" below). The web client reads through a second, **authenticated**
+function, `cheatsheet-read` (read-only), so the Catalyst-hosted app sits behind a
+real auth wall without disturbing the PUBLIC `cheatsheet-api` the cross-origin
+Sigma widgets depend on.
 
-## Endpoints
+## Functions
+- **`cheatsheet-api`** — PUBLIC (open). Shared, read+write API for the Sigma
+  widgets (cross-origin) and the source of truth for writes. Endpoints below.
+- **`cheatsheet-read`** — AUTHENTICATED, read-only. Used only by the
+  Catalyst-hosted web client (same-origin). Exposes just `GET /` (same response
+  shape as `cheatsheet-api`'s `GET /`). Its Catalyst Security Rule must be
+  `{ "methods": ["GET"], "authentication": "required" }` — set in the console,
+  per environment (see "Access & security").
+
+## `cheatsheet-api` endpoints
 - `GET  /`          → all roles, ordered by `Counter` DESC
 - `POST /upsert`    → match on Role + Seniority; bump `Counter` if found, else
   insert a new row (`Counter = 1`, `Country = "Panama"`, today's `UpdatedDate`).
@@ -19,10 +31,33 @@ Catalyst-served copy of the pricing simulator with no Zoho CRM integration (see
   called by the widgets — kept for backward compatibility only.
 
 ## Access & security
-The function is **PUBLIC (open)** in Catalyst access control, hardened at the
-app level rather than with Catalyst authentication. (True per-user auth would
+
+### `cheatsheet-read` (web client) — real authentication
+The Catalyst-hosted web client reads through `cheatsheet-read`, whose Catalyst
+**Security Rule** must be set to require authentication. Because security rules
+for functions are **console-managed** (there is no CLI/project file for them —
+only the API Gateway uses `catalyst-user-rules.json`, which we do NOT enable),
+this MUST be set in the console, **once per environment**:
+
+> Catalyst Console → your project → **Serverless → Functions** →
+> **cheatsheet-read** → **Security Rules** → set the JSON to
+> `{ "methods": ["GET"], "authentication": "required" }` → **Save**.
+
+Do this in **Development** now and again in **Production** before launch — the
+setting does NOT carry across environments. New functions default to
+`"authentication": "optional"`, which is the bypass we are closing.
+
+The web client also runs a **client-side auth guard** (Catalyst Web SDK
+`isUserAuthenticated()` → redirect to `/__catalyst/auth/login`). That is UX only
+— it stops anonymous visitors seeing an empty shell. The server-side Security
+Rule on `cheatsheet-read` is the actual boundary.
+
+### `cheatsheet-api` (Sigma widgets) — PUBLIC, app-level hardening
+`cheatsheet-api` stays **PUBLIC (open)** in Catalyst access control, hardened at
+the app level rather than with Catalyst authentication. (True per-user auth would
 require serving the widget same-origin from Catalyst; we host on Sigma instead —
-see `../MEMORY.md`.)
+see `../MEMORY.md`.) Do NOT flip this one to authenticated: the cross-origin
+Sigma widgets carry no Catalyst session and would break.
 
 Two guards:
 1. **Shared-key gate on writes** — `POST /upsert` and `/increment` require a
@@ -59,9 +94,12 @@ Two guards:
 `client/` is a standalone, Catalyst-hosted build of the pricing simulator. Unlike
 the Sigma widgets it has **no Zoho CRM integration**: there is no embedded record
 to read or write, so it is a read-only calculator. Its only backend dependency is
-`cheatsheet-api`, called with a **relative** `GET /server/cheatsheet-api`
-(same-origin on the Catalyst domain → no CORS, no key). It never writes — there
-is no save button and no `/upsert`/`/increment` call.
+`cheatsheet-read`, called with a **relative** `GET /server/cheatsheet-read`
+(same-origin on the Catalyst domain → the Hosted-Login session cookie rides along
+automatically, so no CORS and no shared key). It never writes — there is no save
+button and no `/upsert`/`/increment` call. Access is gated by
+`cheatsheet-read`'s `authentication: required` Security Rule (see "Access &
+security").
 
 It shares the widgets' pricing logic: `MULT = 1.25`,
 `price = r125(salary × 1.25 + max(margin, floor))`, with `TIER_FLOORS` at a
@@ -104,9 +142,16 @@ Function URL (development):
 https://pricing-calculator-916648406.development.catalystserverless.com/server/cheatsheet-api/
 ```
 
-`catalyst deploy` ships **both** the `cheatsheet-api` function and the manual-mode
-`client/` web client (see "Web client" above). To deploy one in isolation:
-`catalyst deploy --only functions` or `catalyst deploy --only client`.
+`catalyst deploy` ships the `cheatsheet-api` and `cheatsheet-read` functions
+**and** the manual-mode `client/` web client (see "Web client" above). To deploy
+in isolation: `catalyst deploy --only functions` /
+`catalyst deploy --only functions:cheatsheet-read` / `catalyst deploy --only client`.
+
+> ⚠ **After first deploying `cheatsheet-read`, set its Security Rule in the
+> console** (`authentication: required`, methods `["GET"]`) — see "Access &
+> security". A freshly deployed function defaults to `optional`, so until you
+> set this the read endpoint is still open. Repeat in **Production** before
+> launch; the rule does not carry across environments.
 
 > Currently deployed to **development** only. Promoting to production carries
 > code/metadata but NOT Data Store rows — migrate via

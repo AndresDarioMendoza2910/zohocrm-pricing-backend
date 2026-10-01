@@ -6,6 +6,16 @@
 <title>Nessteams · Pricing Simulator</title>
 <link rel="icon" type="image/x-icon" href="favicon.ico">
 
+<!-- ── Catalyst Web SDK ──────────────────────────────────────────────────────
+     Loaded so the client can check the user's Hosted-Login session on load and
+     redirect anonymous visitors to /__catalyst/auth/login (see authGate() at
+     the bottom of this file). This is the UX layer ONLY — the real access
+     boundary is the cheatsheet-api function's Security Rule
+     (authentication: required), enforced server-side by Catalyst.
+     init.js is served by Catalyst hosting and bootstraps window.catalyst. -->
+<script src="https://static.zohocdn.com/catalyst/sdk/js/4.0.0/catalystWebSDK.js"></script>
+<script src="/__catalyst/sdk/init.js"></script>
+
 <link href="https://fonts.googleapis.com/css2?family=Yanone+Kaffeesatz:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,500;0,700;1,400;1,500&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 
 <style>
@@ -510,7 +520,10 @@
   }
 </style>
 </head>
-<body>
+<!-- `hidden` until authGate() confirms a session (or the SDK is absent in a
+     non-Catalyst context). Prevents anonymous visitors from briefly seeing the
+     app shell before the redirect to /__catalyst/auth/login fires. -->
+<body hidden>
 
 <nav>
   <div class="logo-wrap">
@@ -607,7 +620,7 @@
 ───────────────────────────────────────────────────────────────────────── */
 
 /* ─── Constants ─── */
-const MULT = 1.25;
+const MULT = 1.35;
 
 const TIER_DEFAULTS = {
   entry:    [800,  1000],
@@ -670,10 +683,17 @@ var csActiveName = null;  // selected role name string
 
 /* ─── Cheat Sheet API endpoint (Catalyst Serverless Function) ───────────────
    This client is served from the SAME Catalyst domain as the function, so a
-   relative path works and the request is same-origin (no CORS, no key). The
-   client only ever GETs — it never writes to the cheat sheet.
+   relative path works and the request is same-origin — the browser sends the
+   Hosted-Login session cookie automatically (no CORS, no shared key needed).
+
+   We call `cheatsheet-read`, the AUTHENTICATED, read-only function whose
+   Catalyst Security Rule is { methods:["GET"], authentication:"required" }. An
+   anonymous visitor's request is rejected by Catalyst with 401 before any Data
+   Store read happens. (The PUBLIC `cheatsheet-api` is left untouched for the
+   cross-origin Sigma widgets, which can't carry a Catalyst session.) The client
+   only ever GETs — it never writes to the cheat sheet.
 ─────────────────────────────────────────────────────────────────────────── */
-var CS_API = '/server/cheatsheet-api';
+var CS_API = '/server/cheatsheet-read';
 
 /* ─── Seniority button activation ─── */
 function setActiveTier(tier, applyDefaults) {
@@ -737,7 +757,7 @@ function render() {
       <div class="price-card">
         <div class="price-card-label">${label}</div>
         <div class="price-card-value">${fmtR(p.price)}</div>
-        <div class="price-formula">= (${fmt(salary)} &times; 1.25) + ${fmt(marginDollars)}</div>
+        <div class="price-formula">= (${fmt(salary)} &times; 1.35) + ${fmt(marginDollars)}</div>
         <div class="price-meta">
           <span class="margin-pct">${fmt(p.margin)} <span style="opacity:0.6">(${ePct.toFixed(1)}%)</span></span>
           ${floorPill}
@@ -901,8 +921,45 @@ document.addEventListener('click', function(e) {
   }
 });
 
-render();
-csLoad();
+/* ─── Auth gate (UX layer only — NOT the security boundary) ─────────────────
+   Checks the Catalyst Hosted-Login session before showing the app. Anonymous
+   visitors are redirected to the login page instead of seeing an empty shell
+   whose data calls would 401. The actual access boundary is the cheatsheet-api
+   function's Security Rule (authentication: required), enforced server-side by
+   Catalyst — this guard does NOT replace it (the static HTML is still public;
+   only the function/Data Store is protected by the server rule). */
+function initApp() {
+  render();
+  csLoad();
+}
+
+(function authGate() {
+  var LOGIN_URL = '/__catalyst/auth/login';
+
+  /* If the Catalyst Web SDK isn't available (page opened outside Catalyst
+     hosting, e.g. local file/preview), skip the redirect and just render — the
+     server-side Security Rule remains the real gate. Avoids a permanently blank
+     page in non-Catalyst contexts. */
+  if (!(window.catalyst && window.catalyst.auth &&
+        typeof window.catalyst.auth.isUserAuthenticated === 'function')) {
+    console.warn('[auth] Catalyst Web SDK unavailable — skipping client-side ' +
+                 'redirect. The cheatsheet-api Security Rule still enforces auth.');
+    document.body.removeAttribute('hidden');
+    initApp();
+    return;
+  }
+
+  window.catalyst.auth.isUserAuthenticated()
+    .then(function() {
+      /* Signed in → reveal the app and load data. */
+      document.body.removeAttribute('hidden');
+      initApp();
+    })
+    .catch(function() {
+      /* Anonymous → send to Hosted Login. App content is never revealed. */
+      window.location.href = LOGIN_URL;
+    });
+})();
 </script>
 </body>
 </html>

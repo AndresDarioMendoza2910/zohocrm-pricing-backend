@@ -4,7 +4,8 @@
   },
   "functions": {
     "targets": [
-      "cheatsheet-api"
+      "cheatsheet-api",
+      "cheatsheet-read"
     ],
     "ignore": [],
     "source": "functions"
