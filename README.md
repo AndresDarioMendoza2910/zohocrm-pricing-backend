@@ -101,8 +101,8 @@ button and no `/upsert`/`/increment` call. Access is gated by
 `cheatsheet-read`'s `authentication: required` Security Rule (see "Access &
 security").
 
-It shares the widgets' pricing logic: `MULT = 1.25`,
-`price = r125(salary × 1.25 + max(margin, floor))`, with `TIER_FLOORS` at a
+It shares the widgets' pricing logic: `MULT = 1.35`,
+`price = r125(salary × 1.35 + max(margin, floor))`, with `TIER_FLOORS` at a
 **flat 1000** for every tier (2026-06-16 business decision). The old "all
 seniority levels" comparison table was removed — the seniority buttons still
 drive the salary defaults and cheat-sheet filtering.
