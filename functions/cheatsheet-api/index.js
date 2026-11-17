@@ -26,8 +26,13 @@ const DEFAULT_COUNTRY = 'Panama';   // Country set on rows the widget creates
       route is left open.
    NOTE: the key is embedded in the widget HTML, so this is obscurity-level
    protection (stops drive-by writes), NOT true authentication.
-   Change WIDGET_KEY here AND CS_KEY in BOTH widgets together. */
-const WIDGET_KEY = 'nss-cheatsheet-7Qx3v9Kp2Lr8';
+
+   The server's copy is read from the WIDGET_KEY environment variable, so it is
+   never committed to source. Set it in Catalyst Console -> cheatsheet-api ->
+   Environment Variables, per environment (Development AND Production); it must
+   match CS_KEY embedded in BOTH widgets' widget.html. Rotate by changing the
+   env var here and CS_KEY in the widgets together. */
+const WIDGET_KEY = process.env.WIDGET_KEY;
 const ALLOWED_ORIGIN_SUFFIXES = [
   '.zappsusercontent.com',   // Sigma widget hosting (primary)
   '.zohostatic.com',
@@ -65,6 +70,16 @@ module.exports = async (req, res) => {
   if (method === 'OPTIONS') {
     res.writeHead(204);
     res.end();
+    return;
+  }
+
+  /* Fail closed if the shared key isn't configured on the server, so a missing
+     WIDGET_KEY env var surfaces as a clear 500 instead of silently 401-ing
+     otherwise-valid callers (which would look like a client-side key mismatch). */
+  if (method === 'POST' && !WIDGET_KEY) {
+    console.error('[cheatsheet-api] WIDGET_KEY env var is not set — rejecting writes');
+    res.writeHead(500);
+    res.end(JSON.stringify({ success: false, error: 'Server not configured' }));
     return;
   }
 

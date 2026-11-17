@@ -1,7 +1,7 @@
-# Nessteams Pricing Backend (Catalyst)
+# Pricing Backend for Zoho CRM (Catalyst)
 
 The shared serverless API behind both pricing widgets
-(`nessteams-pricing-wizard`, `nessteams-pricing-button`). A Zoho **Catalyst
+(`zohocrm-pricing-wizard`, `zohocrm-pricing-button`). A Zoho **Catalyst
 Advanced I/O Function** (Node 20) named `cheatsheet-api`, backed by the
 `SalaryCheatSheet` Data Store table.
 
@@ -62,8 +62,9 @@ Sigma widgets carry no Catalyst session and would break.
 Two guards:
 1. **Shared-key gate on writes** — `POST /upsert` and `/increment` require a
    matching `key` field **in the request body** (`{ key: ... }`); mismatch →
-   `401`. `GET /` (read) is left open. `WIDGET_KEY` is the constant at the top of
-   `functions/cheatsheet-api/index.js`.
+   `401`. `GET /` (read) is left open. The server's key is read from the
+   **`WIDGET_KEY` environment variable** (`process.env.WIDGET_KEY`) — it is not
+   stored in source. If the env var is unset, writes fail closed with `500`.
 2. **CORS allowlist** — `Access-Control-Allow-Origin` is echoed only for Zoho
    origins (`.zappsusercontent.com`, `.zohostatic.com`, `.zoho.*`), not `*`.
    Rejected origins are logged as `Origin not in allowlist: <origin>`.
@@ -82,9 +83,19 @@ Two guards:
 > stop a determined caller. CORS only constrains browsers, not direct (e.g. curl)
 > calls — the body-key gate is the real server-side check.
 >
-> **The key must match in three places:** `WIDGET_KEY` here and `CS_KEY` in both
-> widgets' `widget.html`. Change all three together. Current value:
-> `nss-cheatsheet-7Qx3v9Kp2Lr8`.
+> **Where the key lives — two places that must match:**
+> 1. **Server:** the `WIDGET_KEY` environment variable, set in **Catalyst
+>    Console → Serverless → Functions → cheatsheet-api → Environment Variables**,
+>    **per environment (Development AND Production).** Never hardcode it in source.
+> 2. **Widgets:** `CS_KEY` embedded in each `widget.html`. This value is
+>    *unavoidably visible* in the deployed page source (obscurity, not a secret),
+>    so inject your real key into the widget build you deploy — the published
+>    source keeps the `REPLACE_WITH_YOUR_SHARED_KEY` placeholder.
+>
+> **To rotate:** pick a new value, update the `WIDGET_KEY` env var (both envs) and
+> `CS_KEY` in your widget builds together, then redeploy the function and
+> re-upload both widget zips. The old value stops working as soon as the env var
+> changes.
 >
 > If the allowlist ever misses the live widget origin, the cheat sheet fails to
 > load — check the function logs for the rejected `Origin` and add it to
@@ -139,7 +150,7 @@ catalyst deploy
 
 Function URL (development):
 ```
-https://pricing-calculator-916648406.development.catalystserverless.com/server/cheatsheet-api/
+https://YOUR-PROJECT.catalystserverless.com/server/cheatsheet-api/
 ```
 
 `catalyst deploy` ships the `cheatsheet-api` and `cheatsheet-read` functions

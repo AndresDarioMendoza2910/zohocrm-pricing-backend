@@ -2,7 +2,6 @@
 	"name": "cheatsheet-read",
 	"version": "1.0.0",
 	"main": "index.js",
-	"author": "amendoza@nessteams.com",
 	"dependencies": {
 		"zcatalyst-sdk-node": "3.4.0"
 	}
