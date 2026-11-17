@@ -126,6 +126,13 @@ drive the salary defaults and cheat-sheet filtering.
 the client and the function together. Catalyst serves the client at the project
 root and the function under `/server/cheatsheet-api`.
 
+> ⚠ **`client-package.json` `name` is account-bound.** Catalyst locks a hosted
+> web client to the name it was first registered under and **will not rename it**
+> (nor let you delete the live version). So `name` here must match the client
+> already registered in *your* Catalyst project — if you fork this, set it to
+> your own client's name. Changing it to a new value makes `catalyst deploy` fail
+> with `Cannot have different name than <registered-name>`.
+
 ## SalaryCheatSheet schema
 `Role` (text) · `Country` (text) · `Seniority` (text) · `MinSalary` (int) ·
 `MaxSalary` (int) · `Counter` (int) · `UpdatedDate` (date `YYYY-MM-DD`) · `ROWID`.
