@@ -1,5 +1,5 @@
 {
-  "name": "nessteams-pricing-widget",
+  "name": "zohocrm-pricing-widget",
   "version": "1.0.4",
   "description": "Pricing Simulator for Zoho CRM — manual-mode Catalyst web client (reads the cheat-sheet API only, no CRM integration)",
   "homepage": "index.html"
